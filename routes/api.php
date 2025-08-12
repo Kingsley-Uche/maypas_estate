@@ -14,29 +14,6 @@ use App\Http\Controllers\Api\V1\{SystemAdminAuthController,
 use Illuminate\Support\Facades\Crypt;
 use Illuminate\Support\Facades\App;
 
-
-//this is just for testing
-Route::get('/dev/generate-reset-token', function () {
-    // Only allow in local/dev environments
-    if (!App::environment(['local', 'development'])) {
-        abort(403, 'Access denied.');
-    }
-
-    $adminId = 1; // change this to a test admin ID from your DB
-
-    try {
-        $token = Crypt::encryptString($adminId);
-        $signature = hash_hmac('sha256', $token, config('app.key'));
-
-        return response()->json([
-            'token' => $token,
-            'signature' => $signature,
-        ]);
-    } catch (\Exception $e) {
-        return response()->json(['message' => 'Failed to generate token', 'error' => $e->getMessage()], 500);
-    }
-});
-
 Route::prefix('system-admin')->group(function(){
     Route::post('/login', [SystemAdminAuthController::class, 'login']);
 
