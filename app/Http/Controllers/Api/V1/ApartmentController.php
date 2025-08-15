@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api\V1;
 use App\Http\Controllers\Controller;
 use Illuminate\Http\Request;
 use App\Models\Apartment;
+use App\Models\ApartmentCategory;
 
 class ApartmentController extends Controller
 {
@@ -20,7 +21,7 @@ class ApartmentController extends Controller
             'number_item' => 'required|integer|min:1',
             'location' => 'required|string',
             'address' => 'required|string',
-            'tenant_id' => 'nullable|exists:users,id'
+            'estate_manager_id' => 'nullable|exists:users,id'
         ]);
 
         $apartment = Apartment::create($validated);
@@ -43,7 +44,7 @@ class ApartmentController extends Controller
             'number_item' => 'required|integer|min:1',
             'location' => 'required|string',
             'address' => 'required|string',
-            'tenant_id' => 'nullable|exists:users,id'
+            'estate_manager_id' => 'nullable|exists:users,id'
         ]);
 
         $apartment->update($validated);

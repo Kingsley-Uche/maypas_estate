@@ -19,9 +19,9 @@ return new class extends Migration
             $table->integer('number_item');
             $table->string('location');
             $table->string('address');
-            $table->foreignId('tenant_id')
+            $table->foreignId('estate_manager_id')
                   ->nullable()
-                  ->constrained('estate_manager_id')
+                  ->constrained('estate_managers')
                   ->onDelete('set null'); // keep apartment but remove tenant link if tenant deleted
             $table->timestamps();
         });
