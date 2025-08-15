@@ -8,8 +8,9 @@ use Illuminate\Support\Facades\Hash;
 use Illuminate\Http\Request;
 use App\Services\OtpService;
 use App\Services\MailService;
+use Illuminate\Support\Facades\Crypt;
 
-use App\Models\User;
+use App\Models\{User,EstateManager};
 use App\Models\LandlordAgent;
 
 class UserAuthController extends Controller
@@ -21,7 +22,6 @@ class UserAuthController extends Controller
             'last_name' => 'required|string|max:255',
             'email' => 'required|email|unique:users,email',
             'password' => 'required|confirmed|min:8',
-            'user_type' => 'numeric|gte:1',
             'phone' => 'required|regex:/^([0-9\s\-\+\(\)]*)$/',
         ]);
 
@@ -32,13 +32,16 @@ class UserAuthController extends Controller
         // Retrieve validated data from the validator instance
         $validatedData = $validator->validated();
 
+        $estate = app('estateManager');
+
         $user = User::create([
             'first_name' => htmlspecialchars($validatedData['first_name'], ENT_QUOTES, 'UTF-8'),
             'last_name' => htmlspecialchars($validatedData['last_name'], ENT_QUOTES, 'UTF-8'),
             'email' => filter_var($validatedData['email'], FILTER_SANITIZE_EMAIL),
             'phone' => htmlspecialchars($validatedData['phone'], ENT_QUOTES, 'UTF-8'),
-            'user_type_id' => $request->user_type,
+            'user_type_id' => 3,
             'password' => Hash::make($request->password),
+            'estate_manager_id' => $estate->id,
         ]);
 
         if(!$user){
@@ -146,11 +149,7 @@ class UserAuthController extends Controller
 
     public function login(Request $request)
     {
-        $user = User::where('email', $request->email)->first();
-
-        if($user->deactivated === 'yes'){
-            return response()->json(['message' => 'The account you are trying to access has been deactivated'], 403);
-        }
+        $user = User::where('email', $request->email)->firstOrFail();
 
         $request->validate([
             'email' => 'required|string|email',
@@ -159,7 +158,7 @@ class UserAuthController extends Controller
 
         if ($user && !$user->email_verified_at) {
             $otpService = new OtpService();
-            $otp = $otpService->resend($user);
+            $otp = $otpService->resend($user, 'password_reset');
 
             $messageContent = [
                 'name' => $user->first_name,
@@ -182,6 +181,11 @@ class UserAuthController extends Controller
 
         if (!$user || !Hash::check($request->password, $user->password)) {
             return response()->json(['message' => 'Invalid credentials'], 401);
+        }
+
+        //Check if account has been deactivated
+        if($user->deactivated === 'yes'){
+            return response()->json(['message' => 'The account you are trying to access has been deactivated'], 403);
         }
 
         $token = $user->createToken('auth_token')->plainTextToken;
@@ -292,7 +296,7 @@ class UserAuthController extends Controller
         $otpService = new OtpService();
 
         if ($otpService->validate($user, $request->otp, 'password_reset')) {
-            $user->update(['password' => $request->password]);
+            $user->update(['password' => $request->password, 'email_verified_at' => now()]);
 
             $user->tokens()->delete();
             $token = $user->createToken('auth_token')->plainTextToken;
@@ -306,5 +310,34 @@ class UserAuthController extends Controller
         return response()->json([
             'message' => 'Invalid or expired OTP'
         ], 422);
+    }
+
+    public function passwordReset(Request $request, $slug)
+    {   
+        $estateManager = EstateManager::where('slug', $slug)->first();
+
+        $request->validate([
+            'token' => 'required',
+            'signature' => 'required',
+            'password' => 'required|confirmed|min:8',
+        ]);
+
+        $expectedSignature = hash_hmac('sha256', $request->token, config('app.key'));
+
+        if (!hash_equals($expectedSignature, $request->signature)) {
+            return response()->json(['message' => 'Invalid or expired reset link'], 403);
+        }
+
+        try {
+            $userId = Crypt::decryptString($request->token);
+            $user = User::where('id', $userId)->where('estate_manager_id', $estateManager->id)->firstOrFail();
+            $user->email_verified_at = now();
+            $user->password = Hash::make($request->password);
+            $user->save();
+
+            return response()->json(['message' => 'Password reset successfully and email has been verified']);
+        } catch (\Exception $e) {
+            return response()->json(['message' => 'Invalid token or user'], 400);
+        }
     }
 }

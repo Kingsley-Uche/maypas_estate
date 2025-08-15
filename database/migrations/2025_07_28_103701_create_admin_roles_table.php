@@ -17,7 +17,7 @@ return new class extends Migration
             $table->enum('manage_properties', ['yes', 'no'])->default('no');
             $table->enum('manage_accounts', ['yes', 'no'])->default('no');
             $table->enum('manage_admins', ['yes', 'no'])->default('no');
-            $table->enum('manage_tenants', ['yes', 'no'])->default('no');
+            $table->enum('manage_estate_manager', ['yes', 'no'])->default('no');
             $table->timestamps();
         });
     }

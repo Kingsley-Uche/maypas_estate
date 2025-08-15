@@ -2,40 +2,19 @@
 
 use Illuminate\Support\Facades\Route;
 
-use App\Http\Middleware\EnsureAdmin;
+use App\Http\Middleware\SetEstateManagerFromUrl as setEstate;
+use App\Http\Middleware\EnsureAdmin as Admin;
+use App\Http\Middleware\SanitizeInput as Sanitize;
+use App\Http\Middleware\EnsureLandlord as Landlord;
 
 use App\Http\Controllers\Api\V1\{SystemAdminAuthController, 
     AdminRolesController, 
     AdminController, 
     UserController, 
     UserAuthController,
-    PropertyController
+    PropertyController,
+    EstateManagerController,
 };
-use Illuminate\Support\Facades\Crypt;
-use Illuminate\Support\Facades\App;
-
-
-//this is just for testing
-Route::get('/dev/generate-reset-token', function () {
-    // Only allow in local/dev environments
-    if (!App::environment(['local', 'development'])) {
-        abort(403, 'Access denied.');
-    }
-
-    $adminId = 1; // change this to a test admin ID from your DB
-
-    try {
-        $token = Crypt::encryptString($adminId);
-        $signature = hash_hmac('sha256', $token, config('app.key'));
-
-        return response()->json([
-            'token' => $token,
-            'signature' => $signature,
-        ]);
-    } catch (\Exception $e) {
-        return response()->json(['message' => 'Failed to generate token', 'error' => $e->getMessage()], 500);
-    }
-});
 
 Route::prefix('system-admin')->group(function(){
     Route::post('/login', [SystemAdminAuthController::class, 'login']);
@@ -44,7 +23,7 @@ Route::prefix('system-admin')->group(function(){
     Route::post('/verify-otp', [SystemAdminAuthController::class,'verifyOtp']);
     Route::post('/reset-password', [SystemAdminAuthController::class,'passwordReset']);
 
-    Route::middleware(['auth:sanctum', 'admin'])->group(function(){
+    Route::middleware(['auth:sanctum', Admin::class])->group(function(){
         Route::post('/logout', [SystemAdminAuthController::class, 'logout']);
         //System Admin Roles Crud
         Route::post('/create-role', [AdminRolesController::class,'create']);
@@ -59,25 +38,52 @@ Route::prefix('system-admin')->group(function(){
         Route::post('/delete-admin', [AdminController::class,'destroy']);
         Route::get('/view-admins', [AdminController::class,'viewAll']);
         Route::get('/view-admin/{id}', [AdminController::class,'viewOne']);
+
+        //Estate Manager Endpoints
+        Route::post('/create-estate-manager', [EstateManagerController::class,'create']);
+        Route::post('/update-estate-manager/{id}', [EstateManagerController::class,'update']);
+        Route::get('/view-estate-manager/{id}', [EstateManagerController::class,'getEstateManager']);
+        Route::get('/view-estate-managers', [EstateManagerController::class,'getEstateManagers']);
+        Route::post('/delete-estate-manager', [EstateManagerController::class,'destroy']);
+
+        //Verification of Landlords and Agents
+        Route::get('/view-users-for-verification', [UserController::class,'fetchLandlordsForVerification']);
+        Route::post('/accept-verification/{id}', [UserController::class,'verifyLandlordDocuments']);
+        Route::post('/reject-verification/{id}', [UserController::class,'rejectLandlordDocuments']);
     });
 });
 
-Route::post('/login', [UserAuthController::class, 'login']);
-Route::post('/register', [UserAuthController::class, 'create']);
-Route::post('/verify-otp', [UserAuthController::class, 'verifyOtp']);
-Route::post('/resend-otp', [UserAuthController::class, 'resendOtp']);
+Route::prefix('{tenant_slug}')->middleware([setEstate::class])->group(function(){
+    //Routes that don't need authentication
+    Route::post('/login', [UserAuthController::class, 'login']);
+    Route::post('/set-password', [UserAuthController::class, 'passwordReset']);
+    
+    Route::post('/register', [UserAuthController::class, 'create']);
+    Route::post('/verify-otp', [UserAuthController::class, 'verifyOtp']);
+    Route::post('/resend-otp', [UserAuthController::class, 'resendOtp']);
 
-Route::post('/confirm-user', [UserAuthController::class, 'confirmUser']);
-Route::post('/reset-password', [UserAuthController::class, 'resetPasswordOtp']);
+    Route::post('/confirm-user', [UserAuthController::class, 'confirmUser']);
+    Route::post('/reset-password', [UserAuthController::class, 'resetPasswordOtp']);
 
-Route::middleware(['auth:sanctum'])->group(function(){
-    Route::get('/view-own', [UserController::class, 'viewOwn']);
-    Route::post('/update-profile', [UserController::class, 'update']);
-    Route::post('/deactivate-profile', [UserController::class, 'deactivate']);
+    //Guarded Routes
+    Route::middleware(['auth:sanctum'])->group(function(){
+        Route::get('/view-own', [UserController::class, 'viewOwn']);
+        Route::post('/update-profile', [UserController::class, 'update']);
+        Route::post('/deactivate-profile', [UserController::class, 'deactivate']);
 
-    Route::post('/add-property', [PropertyController::class, 'store']);
+        Route::post('/add-property', [PropertyController::class, 'store']);
 
 
-    Route::post('/change-password', [UserAuthController::class, 'changePassword']);
-    Route::post('/logout', [UserAuthController::class, 'logout']);
+        Route::post('/change-password', [UserAuthController::class, 'changePassword']);
+        Route::post('/logout', [UserAuthController::class, 'logout']);
+
+        //Routes Accessible to only Landlords and Agents
+        Route::middleware([Landlord::class, Sanitize::class])->group(function(){
+            Route::post('/update-landlord', [UserController::class, 'completeLandlordProfile']);
+        });
+    });
+
 });
+
+
+

@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Api\V1;
 use App\Http\Controllers\Controller;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Validator;
+use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Crypt;
 use Illuminate\Support\Facades\Mail;
 use App\Mail\PasswordResetLinkMail;
@@ -38,7 +39,7 @@ class AdminController extends Controller
             'name' => htmlspecialchars($validatedData['name'], ENT_QUOTES, 'UTF-8'),
             'email' => filter_var($validatedData['email'], FILTER_SANITIZE_EMAIL),
             'role_id' => $request->role_id,
-            'password' => 'testingPassword',
+            'password' => hash::make('testingPassword'),
         ]);
 
         if(!$admin){
@@ -64,7 +65,6 @@ class AdminController extends Controller
             Mail::to($admin->email)->send(new PasswordResetLinkMail($messageContent));
         } catch (\Exception $e) {
             // Log and respond to mail failure
-            \Log::error('Mail sending failed: ' . $e->getMessage());
             return response()->json(['message' => 'Failed to send password setting email. Please try again.'], 500);
         }
         
@@ -99,7 +99,7 @@ class AdminController extends Controller
             return response()->json(['message'=> 'Failed to delete, try again later'], 500);
         }
 
-        return response()->json(['message'=> 'Role deleted successfully','data'=> $admin ],204);
+        return response()->json(['message'=> 'Admin deleted successfully' ],204);
     }
 
     public function viewAll(){

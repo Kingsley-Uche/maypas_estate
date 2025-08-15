@@ -23,6 +23,18 @@ return Application::configure(basePath: dirname(__DIR__))
         $middleware->alias([
             'admin' => \App\Http\Middleware\EnsureAdmin::class,
         ]);
+
+        $middleware->alias([
+            'set.estate' => \App\Http\Middleware\SetEstateManagerFromUrl::class,
+        ]);
+
+        $middleware->alias([
+            'landlord' => \App\Http\Middleware\EnsureLandlord::class,
+        ]);
+
+        $middleware->alias([
+            'sanitize' => \App\Http\Middleware\SanitizeInput::class,
+        ]);
     })
     ->withExceptions(function (Exceptions $exceptions): void {
         //

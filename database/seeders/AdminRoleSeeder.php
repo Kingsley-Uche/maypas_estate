@@ -20,7 +20,7 @@ class AdminRoleSeeder extends Seeder
               'manage_properties'=> 'yes',
               'manage_accounts'=> 'yes',
               'manage_admins'=> 'yes',
-              'manage_tenants'=>'yes',
+              'manage_estate_manager'=>'yes',
             ]
         ]);
     }

@@ -27,7 +27,8 @@ class User extends Authenticatable
         'email',
         'password',
         'deactivated',
-        'user_type_id'
+        'user_type_id',
+        'estate_manager_id'
     ];
 
     /**

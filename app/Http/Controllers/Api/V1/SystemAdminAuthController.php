@@ -33,7 +33,7 @@ class SystemAdminAuthController extends Controller
             //     }
             // }
 
-            if($admin && $admin->password === "testingPassword"){
+            if($admin && !$admin->email_verified_at){
                 return response()->json(['message' => 'Failed, Contact super admin']);
             }
             if (!$admin || !Hash::check($request->password, $admin->password)) {
@@ -236,7 +236,6 @@ class SystemAdminAuthController extends Controller
                 Mail::to($request->email)->send(new OtpMail($messageContent));
                 } catch (\Exception $e) {
                     // Log and respond to mail failure
-                    \Log::error('Mail sending failed: ' . $e->getMessage());
                     return response()->json(['message' => 'Failed to send OTP email. Please try again.'], 500);
                 }
 

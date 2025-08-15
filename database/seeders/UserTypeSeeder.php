@@ -18,16 +18,16 @@ class UserTypeSeeder extends Seeder
               'id' => 1,
               'name' => 'Landlord',
             ],
-                
+
             [
               'id' => 2,
               'name' => 'Agent',
             ],
-
+                
             [
               'id' => 3,
-              'name' => 'User',
-            ]
+              'name' => 'Tenant',
+            ],
         ]);
     }
 }
