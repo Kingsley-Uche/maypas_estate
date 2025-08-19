@@ -20,6 +20,7 @@ class AdminSeeder extends Seeder
               'name'=> 'Emeka David',
               'email'=> 'admin@ffsd.com',
               'role_id' => 1,
+              'email_verified_at' => now(),
               'password'=> Hash::make('testingPassword'),
             ]
         ]);

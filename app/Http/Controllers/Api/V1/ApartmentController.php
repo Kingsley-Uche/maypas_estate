@@ -17,14 +17,13 @@ class ApartmentController extends Controller
     {
         $validated = $request->validate([
             'category_id' => 'required|exists:apartment_categories,id',
-            'name' => 'required|string',
             'number_item' => 'required|integer|min:1',
             'location' => 'required|string',
             'address' => 'required|string',
             'estate_manager_id' => 'nullable|exists:users,id'
         ]);
 
-        $apartment = Apartment::create($validated);
+        Apartment::create($validated);
         return response()->json($apartment->load(['category', 'tenant']), 201);
     }
 
@@ -40,7 +39,6 @@ class ApartmentController extends Controller
 
         $validated = $request->validate([
             'category_id' => 'required|exists:apartment_categories,id',
-            'name' => 'required|string',
             'number_item' => 'required|integer|min:1',
             'location' => 'required|string',
             'address' => 'required|string',
