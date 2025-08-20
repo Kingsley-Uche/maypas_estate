@@ -7,6 +7,7 @@ use App\Http\Middleware\EnsureAdmin as Admin;
 use App\Http\Middleware\SanitizeInput as Sanitize;
 use App\Http\Middleware\EnsureLandlord as Landlord;
 
+
 use App\Http\Controllers\Api\V1\{SystemAdminAuthController, 
     AdminRolesController, 
     AdminController, 
@@ -14,6 +15,7 @@ use App\Http\Controllers\Api\V1\{SystemAdminAuthController,
     UserAuthController,
     PropertyController,
     EstateManagerController,
+    ApartmentController,
 };
 
 Route::prefix('system-admin')->group(function(){
@@ -50,6 +52,16 @@ Route::prefix('system-admin')->group(function(){
         Route::get('/view-users-for-verification', [UserController::class,'fetchLandlordsForVerification']);
         Route::post('/accept-verification/{id}', [UserController::class,'verifyLandlordDocuments']);
         Route::post('/reject-verification/{id}', [UserController::class,'rejectLandlordDocuments']);
+
+//for estate managers
+
+
+// Apartment Category routes
+Route::get('/apartment/categories', [ApartmentController::class, 'CategoryIndex']);
+Route::post('/apartment/categories', [ApartmentController::class, 'CategoryStore']);
+Route::get('/apartment/category/{id}', [ApartmentController::class, 'CategoryShow']);
+Route::put('/apartment/category/{id}', [ApartmentController::class, 'CategoryUpdate']);
+Route::delete('/apartment/category/{id}', [ApartmentController::class, 'CategoryDestroy']);
     });
 });
 
@@ -76,11 +88,19 @@ Route::prefix('{tenant_slug}')->middleware([setEstate::class])->group(function()
 
         Route::post('/change-password', [UserAuthController::class, 'changePassword']);
         Route::post('/logout', [UserAuthController::class, 'logout']);
+        //accessible to all under tenant slug;
 
+        Route::get('/apartments/{id}', [ApartmentController::class, 'show']);
         //Routes Accessible to only Landlords and Agents
         Route::middleware([Landlord::class, Sanitize::class])->group(function(){
             Route::post('/update-landlord', [UserController::class, 'completeLandlordProfile']);
+            Route::get('/apartments', [ApartmentController::class, 'index']);
+            Route::post('/apartment/create', [ApartmentController::class, 'store']);
+            Route::put('/apartments/{id}', [ApartmentController::class, 'update']);
+            Route::delete('/apartments/{id}', [ApartmentController::class, 'destroy']);
         });
+
+
     });
 
 });

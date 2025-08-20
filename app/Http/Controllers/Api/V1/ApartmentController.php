@@ -1,98 +1,254 @@
 <?php
+
 namespace App\Http\Controllers\Api\V1;
 
 use App\Http\Controllers\Controller;
-use Illuminate\Http\Request;
 use App\Models\Apartment;
 use App\Models\ApartmentCategory;
-
+use App\Models\ApartmentLocation;
+use Illuminate\Http\JsonResponse;
+use Illuminate\Http\Request;
+use Illuminate\Http\Response;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Validation\Rule;
 class ApartmentController extends Controller
 {
-    public function index()
+    /**
+     * Display a listing of apartments for the authenticated user's estate manager.
+     */
+public function index(Request $request): JsonResponse
     {
-        return response()->json(Apartment::with(['category', 'tenant'])->get());
+        // Get the authenticated user's estate manager ID
+        $estateManagerId = $request->user()->estate_manager_id;
+        
+        $categories = ApartmentCategory::whereHas('apartments', function ($query) use ($estateManagerId) {
+            $query->where('estate_manager_id', $estateManagerId);
+        })->with([
+            'apartments' => function ($query) use ($estateManagerId) {
+                $query->where('estate_manager_id', $estateManagerId)->with('apartmentAtLocation');
+            }
+        ])->get(['id', 'name', 'description']);
+
+        return response()->json($categories);
     }
 
-    public function store(Request $request)
+    /**
+     * Store a new apartment.
+     */
+    public function store(Request $request, string $slug): JsonResponse
     {
         $validated = $request->validate([
-            'category_id' => 'required|exists:apartment_categories,id',
-            'number_item' => 'required|integer|min:1',
-            'location' => 'required|string',
-            'address' => 'required|string',
-            'estate_manager_id' => 'nullable|exists:users,id'
+            'category_id' => ['required', 'exists:apartment_categories,id'],
+            'number_item' => ['required', 'integer', 'min:1'],
+            'location' => ['required', 'string'],
+            'address' => ['required', 'string'],
         ]);
 
-        Apartment::create($validated);
-        return response()->json($apartment->load(['category', 'tenant']), 201);
+        $estateManagerId = auth()->user()->estate_manager_id;
+
+        return DB::transaction(function () use ($validated, $estateManagerId) {
+            $apartment = Apartment::create([
+                ...$validated,
+                'estate_manager_id' => $estateManagerId
+            ]);
+
+            // Create apartment locations based on number_item
+            $locations = [];
+            for ($i = 0; $i < (int)$validated['number_item']; $i++) {
+                $locations[] = [
+                    'apartment_id' => $apartment->id,
+                    'apartment_identifier' => 'None',
+                    'created_at' => now(),
+                    'updated_at' => now(),
+                ];
+            }
+
+            ApartmentLocation::insert($locations);
+
+            return response()->json($apartment->load('category'), Response::HTTP_CREATED);
+        });
     }
 
-    public function show($id)
-    {
-        $apartment = Apartment::with(['category', 'tenant'])->findOrFail($id);
-        return response()->json($apartment);
+    /**
+     * Display a specific apartment.
+     */
+public function show(Request $request, string $slug, int $id): JsonResponse
+{
+    $estateManagerId = auth()->user()->estate_manager_id;
+    
+   $apartmentLocation = ApartmentLocation::select(
+    'apartment_locations.*', 
+    'apartments.location',
+    'apartments.address',
+    'apartments.id as apartment_id',
+    'apartments.category_id',
+    'apartment_categories.id as category_id',
+    'apartment_categories.name as category_name'
+)
+->join('apartments', 'apartments.id', '=', 'apartment_locations.apartment_id')
+->join('apartment_categories', 'apartment_categories.id', '=', 'apartments.category_id') // Fixed typo: 'aparments' to 'apartments'
+->where('apartment_locations.id', $id)
+->where('apartments.estate_manager_id', $estateManagerId)
+->first();
+
+if (!$apartmentLocation) {
+    return response()->json(
+        ['message' => 'Apartment location not found'], 
+        Response::HTTP_NOT_FOUND
+    );
+}
+
+return response()->json($apartmentLocation);
+}
+
+    /**
+     * Update an apartment.
+     */
+public function update(Request $request, string $slug, int $id): JsonResponse
+{
+    $estateManagerId = auth()->user()->estate_manager_id;
+    
+    $apartmentLocation = ApartmentLocation::where('id', $id)
+        ->whereHas('apartment', function ($query) use ($estateManagerId) {
+            $query->where('estate_manager_id', $estateManagerId);
+        })
+        ->first();
+
+    if (!$apartmentLocation) {
+        return response()->json(
+            ['message' => 'Apartment location not found'], 
+            Response::HTTP_NOT_FOUND
+        );
     }
 
-    public function update(Request $request, $id)
-    {
-        $apartment = Apartment::findOrFail($id);
+    $validated = $request->validate([
+        'apartment_identifier' => ['sometimes', 'string', 'max:255'],
 
-        $validated = $request->validate([
-            'category_id' => 'required|exists:apartment_categories,id',
-            'number_item' => 'required|integer|min:1',
-            'location' => 'required|string',
-            'address' => 'required|string',
-            'estate_manager_id' => 'nullable|exists:users,id'
+    ]);
+
+    // Update only the provided fields for ApartmentLocation
+    $apartmentLocation->update($validated);
+
+    if ($request->hasAny(['category_id', 'location', 'address'])) {
+        $apartmentValidated = $request->validate([
+            'category_id' => ['sometimes', 'exists:apartment_categories,id'],
+            'location' => ['sometimes', 'string', 'max:255'],
+            'address' => ['sometimes', 'string', 'max:500'],
         ]);
-
-        $apartment->update($validated);
-        return response()->json($apartment->load(['category', 'tenant']));
+        
+        $apartmentLocation->apartment->update($apartmentValidated);
     }
 
-    public function destroy($id)
+    
+
+    return response()->json(['status'=>true,'message'=>'updated successfully'],200);
+}
+
+    /**
+     * Delete an apartment.
+     */
+    public function destroy(int $id): JsonResponse
     {
-        Apartment::findOrFail($id)->delete();
-        return response()->json(null, 204);
-    }
-     public function CategoryIndex()
-    {
-        return response()->json(ApartmentCategory::all());
+        $apartment = ApartmentLocation::find($id);
+
+        if (!$apartment) {
+            return response()->json(
+                ['message' => 'Apartment not found'], 
+                Response::HTTP_NOT_FOUND
+            );
+        }
+
+        $apartment->delete();
+
+        return response()->json(null, Response::HTTP_NO_CONTENT);
     }
 
-    public function CategoryStore(Request $request)
+    /**
+     * Display a listing of apartment categories.
+     */
+    public function categoryIndex(): JsonResponse
+    {
+        $categories = ApartmentCategory::all();
+        
+        return response()->json($categories);
+    }
+
+    /**
+     * Store a new apartment category.
+     */
+    public function categoryStore(Request $request): JsonResponse
     {
         $validated = $request->validate([
-            'name' => 'required|string|unique:apartment_categories,name',
-            'description' => 'nullable|string'
+            'name' => ['required', 'string', 'unique:apartment_categories,name'],
+            'description' => ['nullable', 'string']
         ]);
 
         $category = ApartmentCategory::create($validated);
-        return response()->json($category, 201);
+
+        return response()->json($category, Response::HTTP_CREATED);
     }
 
-    public function CategoryShow($id)
+    /**
+     * Display a specific apartment category.
+     */
+    public function categoryShow(int $id): JsonResponse
     {
-        $category = ApartmentCategory::findOrFail($id);
+        $category = ApartmentCategory::find($id);
+
+        if (!$category) {
+            return response()->json(
+                ['message' => 'Apartment category not found'], 
+                Response::HTTP_NOT_FOUND
+            );
+        }
+
         return response()->json($category);
     }
 
-    public function CategoryUpdate(Request $request, $id)
+    /**
+     * Update an apartment category.
+     */
+    public function categoryUpdate(Request $request, int $id): JsonResponse
     {
-        $category = ApartmentCategory::findOrFail($id);
+        $category = ApartmentCategory::find($id);
+
+        if (!$category) {
+            return response()->json(
+                ['message' => 'Apartment category not found'], 
+                Response::HTTP_NOT_FOUND
+            );
+        }
 
         $validated = $request->validate([
-            'name' => 'required|string|unique:apartment_categories,name,' . $id,
-            'description' => 'nullable|string'
+            'name' => [
+                'required', 
+                'string', 
+                Rule::unique('apartment_categories', 'name')->ignore($id)
+            ],
+            'description' => ['nullable', 'string']
         ]);
 
         $category->update($validated);
+
         return response()->json($category);
     }
 
-    public function CategoryDestroy($id)
+    /**
+     * Delete an apartment category.
+     */
+    public function categoryDestroy(int $id): JsonResponse
     {
-        ApartmentCategory::findOrFail($id)->delete();
-        return response()->json(null, 204);
-    }
+        $category =  ApartmentCategory::find($id);
 
+        if (!$category) {
+            return response()->json(
+                ['message' => 'Apartment category not found'], 
+                Response::HTTP_NOT_FOUND
+            );
+        }
+
+        $category->delete();
+
+        return response()->json(null, Response::HTTP_NO_CONTENT);
+    }
 }
